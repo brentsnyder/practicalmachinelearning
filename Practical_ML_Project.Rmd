@@ -1,0 +1,109 @@
+---
+title: "Practical Machine Learning Project"
+author: "Brent Snyder"
+date: "September 11, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+In this analysis, I classify the 'classe' variable using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. In the training set, I used cross validation on multiple models to determine the best model to predict the 'classe' variable. 
+
+It was found that a Random Forest model outperformed a GBM model and had an out of sample accuracy of 99.86% using 3-fold cross validation. Thorough data cleaning was applied to remove columns with many NAs and columns with low predictive ability due to near zero variance.
+
+## Load Data and Prepare the Train vs Validate Split
+
+This code chunk loads the csvs and splits the train and validate sets using 75% of the data for the train set and 25% of the data for the validate set.
+
+```{r }
+library(caret)
+
+training <- read.csv("~/Dropbox/Coursera/Practical_ML/Final_Project/pml-training.csv")
+testing <- read.csv("~/Dropbox/Coursera/Practical_ML/Final_Project/pml-testing.csv")
+
+set.seed(10000)
+inTrain <- createDataPartition(y=training$classe, p = 3/4)[[1]]
+train <- training[inTrain, ]
+validate <- training[-inTrain, ]
+```
+
+## Clean Data and Remove Low Predictive Columns
+
+This section removes the first 5 columns because they are descriptive information that are not predictive. The 'nearZeroVar' function is used to remove the remaining non-predictive columns. Lastly, the sapply function is used to remove columns that have > 90% NAs.
+
+```{r }
+
+train <- train[, -(1:5)]
+validate <- validate[, -(1:5)]
+
+nzv <- nearZeroVar(train)
+train <- train[, -nzv]
+validate <- validate[, -nzv]
+
+cols_with_NA <- sapply(train, function(x) mean(is.na(x))) > 0.9
+train <- train[ , cols_with_NA==F]
+validate <- validate[, cols_with_NA==F]
+
+```
+
+## Cross Validation and Model Training
+
+Perform 3-fold cross validation and train a Random Forest and a GBM model on the train dataset.
+
+```{r }
+cv_mod <- trainControl(method="cv", number=3, verboseIter=F)
+rf_fit <- train(classe ~ ., data=train, method="rf", trControl=cv_mod)
+gbm_fit <- train(classe ~ ., data=train, method="gbm", trControl=cv_mod)
+
+rf_fit$finalModel
+gbm_fit$finalModel
+```
+
+## Evaluate Out of Sample Error Rate
+
+Examine the out of sample error rate and compare the accuracy of each model to determine the best model to use for the testing set.
+
+Based on the confusion matrices for the two models, the Random Forest model has the lowest out of sample error rate on the validate dataset (99.86% accuracy), which means that we will choose this model for our testing predictions.
+
+```{r }
+rf_pred <- predict(rf_fit, newdata=validate)
+gbm_pred <- predict(gbm_fit, newdata=validate)
+
+confusionMatrix(validate$classe, rf_pred)
+confusionMatrix(validate$classe, gbm_pred)
+```
+
+## Re-Train the Best Model on the Entire Training Set
+
+Since we originally split the training set to validate the error rate, we will now re-process the entire training set so we can train the best model on the maximum amount of data.
+
+``` {r }
+training <- training[, -(1:5)]
+testing <- testing[, -(1:5)]
+
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+testing <- testing[, -nzv]
+
+cols_with_NA <- sapply(training, function(x) mean(is.na(x))) > 0.9
+training <- training[ , cols_with_NA==F]
+testing <- testing[, cols_with_NA==F]
+
+cv_mod <- trainControl(method="cv", number=3, verboseIter=F)
+final_rf_fit <- train(classe ~ ., data=training, method="rf", trControl=cv_mod)
+
+final_rf_pred <- predict(final_rf_fit, newdata=testing)
+```
+
+## Final Submission
+
+The 20 provided test cases are classified using the model's predictions.
+
+``` {r }
+final_rf_pred <- predict(rf_fit, newdata=testing)
+final_rf_pred
+```
